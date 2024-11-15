@@ -1,5 +1,6 @@
 import pygame
 import sys
+import math
 
 # Initialisation de Pygame
 pygame.init()
@@ -16,32 +17,50 @@ BLUE = (0, 0, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 
+# Variables de score
+score_bleu = 0
+score_noir = 0
+
 # Classe pour représenter chaque barre
 class Barre:
     def __init__(self, x, color, y_positions, min_y, max_y, direction):
-        self.x = x  # Position horizontale de la barre
-        self.color = color  # Couleur des joueurs sur la barre
-        self.initial_y_positions = y_positions  # Liste des positions verticales pour chaque joueur
-        self.y_offset = 0  # Décalage vertical de la barre
-        self.player_width = 20  # Largeur des joueurs (rectangle)
-        self.player_height = 30  # Hauteur des joueurs (rectangle)
-        self.min_y = min_y  # Limite de déplacement vers le haut
-        self.max_y = max_y  # Limite de déplacement vers le bas
-        self.direction = direction  # Direction du tir : (1, 0) pour droite, (-1, 0) pour gauche
+        self.x = x
+        self.color = color
+        self.initial_y_positions = y_positions
+        self.y_offset = 0
+        self.player_width = 20
+        self.player_height = 30
+        self.min_y = min_y
+        self.max_y = max_y
+        self.direction = direction
 
     def dessiner(self, surface):
         for y in self.initial_y_positions:
-            # Calculer la position en ajoutant le décalage
-            rect = pygame.Rect(self.x - self.player_width // 2, y + self.y_offset - self.player_height // 2, self.player_width, self.player_height)
-            pygame.draw.rect(surface, self.color, rect)  # Dessiner le rectangle représentant un joueur
+            # Dessiner les joueurs sous forme de rectangles
+            rect = pygame.Rect(
+                self.x - self.player_width // 2,
+                y + self.y_offset - self.player_height // 2,
+                self.player_width,
+                self.player_height
+            )
+            pygame.draw.rect(surface, self.color, rect)
+            
+            # Dessiner un cercle blanc au centre de chaque joueur (réduit à rayon 3)
+            pygame.draw.circle(
+                surface, 
+                WHITE,  # Couleur du cercle (blanc)
+                (int(self.x), int(y + self.y_offset)),  # Position centrale du joueur
+                3 # Nouveau rayon plus petit
+            )
 
     def deplacer(self, direction):
+        vitesse = 0.5  # Vitesse de déplacement ajustée
         if direction == "up":
-            new_offset = self.y_offset - 0.3  # Déplacement vers le haut
+            new_offset = self.y_offset - vitesse  # Déplacement vers le haut
             if new_offset >= self.min_y:
                 self.y_offset = new_offset
         elif direction == "down":
-            new_offset = self.y_offset + 0.3  # Déplacement vers le bas
+            new_offset = self.y_offset + vitesse  # Déplacement vers le bas
             if new_offset <= self.max_y:
                 self.y_offset = new_offset
 
@@ -60,7 +79,6 @@ class Balle:
         pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), self.radius)
 
     def deplacer(self):
-        # Déplacer la balle uniquement si elle n'est pas attachée
         if self.attached_to_barre is None:
             self.x += self.speed_x
             self.y += self.speed_y
@@ -73,19 +91,31 @@ class Balle:
             for barre in barres:
                 for y in barre.initial_y_positions:
                     joueur_y = y + barre.y_offset
-                    if (barre.x - barre.player_width // 2 - self.radius <= self.x <= barre.x + barre.player_width // 2 + self.radius) and \
-                       (joueur_y - barre.player_height // 2 - self.radius <= self.y <= joueur_y + barre.player_height // 2 + self.radius):
-                        # Arrêter la balle lorsqu'elle touche un joueur
-                        self.speed_x = 0
-                        self.speed_y = 0
+                    # Position du cercle blanc du joueur
+                    player_center = (int(barre.x), int(joueur_y))
+
+                    # Vérification si la balle touche le cercle (proximité de la balle avec le centre du joueur)
+                    distance = ((self.x - player_center[0]) ** 2 + (self.y - player_center[1]) ** 2) ** 0.5
+                    if distance <= self.radius + 3:  # Zone de collision réduite (3 au lieu de 8)
+                        # Calcul de l'angle de déviation en fonction de la position de la balle
+                        angle = math.atan2(self.y - player_center[1], self.x - player_center[0])
+
+                        # Appliquer une déviation à la balle en fonction de l'angle
+                        speed = math.sqrt(self.speed_x ** 2 + self.speed_y ** 2)
+                        self.speed_x = math.cos(angle) * speed
+                        self.speed_y = math.sin(angle) * speed
+                        
+                        # Modifier la direction pour simuler un rebond
+                        self.speed_x = -self.speed_x  # Inverser la direction sur l'axe X
+
                         self.attached_to_barre = barre
-                        return  # Sortir de la méthode après avoir arrêté la balle
+                        return  # Sortir de la méthode après avoir dévié la balle
 
     def tirer(self):
         if self.attached_to_barre is not None:
             direction = self.attached_to_barre.direction
-            self.speed_x = direction[0] * 5  # Direction x multipliée par une vitesse
-            self.speed_y = direction[1] * 5  # Direction y multipliée par une vitesse
+            self.speed_x = direction[0] * 0.5  # Direction x multipliée par une vitesse
+            self.speed_y = direction[1] * 0.5  # Direction y multipliée par une vitesse
             self.attached_to_barre = None  # Détacher la balle
 
 # Créer des barres pour chaque équipe avec des configurations différentes
@@ -101,15 +131,39 @@ barres = [
 ]
 
 # Initialisation de la balle
-balle = Balle(400, 200, 10, RED)
+balle = Balle(width // 2, height // 2, 8, RED)
 
 # Fonction pour dessiner le terrain
 def dessiner_terrain():
-    window.fill(GREEN)  # Remplir l'arrière-plan avec du vert
+    window.fill(GREEN)
     pygame.draw.rect(window, WHITE, (0, height // 3, 5, height // 3))  # But gauche
     pygame.draw.rect(window, WHITE, (width - 5, height // 3, 5, height // 3))  # But droit
     pygame.draw.line(window, WHITE, (width // 2, 0), (width // 2, height), 5)  # Ligne centrale
     pygame.draw.circle(window, WHITE, (width // 2, height // 2), 50, 5)  # Cercle central
+
+# Fonction pour vérifier les buts et mettre à jour les scores
+def check_goal():
+    global score_bleu, score_noir, balle
+    if balle.x - balle.radius <= 0:  # But pour l'équipe noire
+        score_noir += 1
+        reset_balle(team='bleu')
+    elif balle.x + balle.radius >= width:  # But pour l'équipe bleue
+        score_bleu += 1
+        reset_balle(team='noir')
+
+def reset_balle(team):
+    if team == 'noir':
+        balle.x, balle.y = 350, height // 2  # Barre de milieu de l'équipe bleue
+    else:
+        balle.x, balle.y = 450, height // 2  # Barre de milieu de l'équipe noire
+    balle.speed_x, balle.speed_y = 0, 0  # Réinitialiser la vitesse
+    balle.attached_to_barre = None  # La balle n'est attachée à aucune barre
+
+# Fonction pour afficher les scores
+def afficher_scores():
+    font = pygame.font.SysFont(None, 50)
+    score_text = font.render(f"Bleu: {score_bleu} - Noir: {score_noir}", True, WHITE)
+    window.blit(score_text, (width // 2 - score_text.get_width() // 2, 10))
 
 # Boucle principale du jeu
 running = True
@@ -161,11 +215,15 @@ while running:
     # Mettre à jour les positions
     balle.deplacer()
 
-    # Dessiner le terrain et les barres
+    # Vérifier les buts
+    check_goal()
+
+    # Dessiner le terrain, les barres, la balle et les scores
     dessiner_terrain()
     for barre in barres:
         barre.dessiner(window)
     balle.dessiner(window)
+    afficher_scores()
 
     pygame.display.flip()  # Mettre à jour l'affichage
 
